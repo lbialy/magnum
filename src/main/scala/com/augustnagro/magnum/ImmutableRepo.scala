@@ -11,7 +11,11 @@ import scala.util.{Try, Using}
   * @tparam ID
   *   id type of E
   */
-open class ImmutableRepo[E, ID](using defaults: RepoDefaults[?, E, ID]):
+open class ImmutableRepo[E, ID](using val defaults: RepoDefaults[?, E, ID]):
+
+  type TableInfoType = defaults.TableInfoType
+
+  def table: TableInfoType = defaults.tableInfo
 
   /** Count of all entities */
   def count(using DbCon): Long = defaults.count

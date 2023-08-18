@@ -9,14 +9,15 @@ import scala.util.{Failure, Success, Using}
 
 object MySqlDbType extends DbType:
 
-  def buildRepoDefaults[EC, E, ID](
+  def buildRepoDefaults[EC, E, ID, TI](
       tableNameSql: String,
       eElemNames: Seq[String],
       eElemNamesSql: Seq[String],
       eElemCodecs: Seq[DbCodec[?]],
       ecElemNames: Seq[String],
       ecElemNamesSql: Seq[String],
-      idIndex: Int
+      idIndex: Int,
+      ti: TI
   )(using
       eCodec: DbCodec[E],
       ecCodec: DbCodec[EC],
@@ -24,7 +25,7 @@ object MySqlDbType extends DbType:
       eClassTag: ClassTag[E],
       ecClassTag: ClassTag[EC],
       idClassTag: ClassTag[ID]
-  ): RepoDefaults[EC, E, ID] =
+  ): RepoDefaults[EC, E, ID] { type TableInfoType = TI } =
     val idName = eElemNamesSql(idIndex)
     val selectKeys = eElemNamesSql.mkString(", ")
     val ecInsertKeys = ecElemNamesSql.mkString("(", ", ", ")")
@@ -64,6 +65,10 @@ object MySqlDbType extends DbType:
       pos + idCodec.cols.length
 
     new RepoDefaults[EC, E, ID]:
+      type TableInfoType = TI
+
+      def tableInfo: TI = ti
+
       def count(using con: DbCon): Long = countQuery.run().head
 
       def existsById(id: ID)(using DbCon): Boolean =

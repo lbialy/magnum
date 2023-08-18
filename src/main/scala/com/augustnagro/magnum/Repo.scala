@@ -1,6 +1,7 @@
 package com.augustnagro.magnum
 
 import javax.sql.DataSource
+import scala.deriving.Mirror
 
 /** A read & write data repository
   *

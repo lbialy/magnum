@@ -6,6 +6,10 @@ import scala.quoted.*
 import scala.reflect.ClassTag
 
 trait RepoDefaults[EC, E, ID]:
+  type TableInfoType
+
+  def tableInfo: TableInfoType
+
   def count(using DbCon): Long
   def existsById(id: ID)(using DbCon): Boolean
   def findAll(using DbCon): Vector[E]
@@ -23,14 +27,15 @@ trait RepoDefaults[EC, E, ID]:
   def insertAllReturning(entityCreators: Iterable[EC])(using DbCon): Vector[E]
   def update(entity: E)(using DbCon): Unit
   def updateAll(entities: Iterable[E])(using DbCon): BatchUpdateResult
+end RepoDefaults
 
 object RepoDefaults:
 
-  inline given genImmutableRepo[E: DbCodec: Mirror.Of, ID: ClassTag]
+  transparent inline given genImmutableRepo[E: DbCodec: Mirror.Of, ID: ClassTag]
       : RepoDefaults[E, E, ID] =
     genRepo[E, E, ID]
 
-  inline given genRepo[
+  transparent inline given genRepo[
       EC: DbCodec: Mirror.Of,
       E: DbCodec: Mirror.Of,
       ID: ClassTag
@@ -38,9 +43,14 @@ object RepoDefaults:
 
   private def genImpl[EC: Type, E: Type, ID: Type](using
       Quotes
-  ): Expr[RepoDefaults[EC, E, ID]] =
+  ): Expr[RepoDefaults[EC, E, ID] { type TableInfoType }] =
     import quotes.reflect.*
     val exprs = tableExprs[EC, E, ID]
+    val refinement = exprs.eElemNames
+      .foldLeft(TypeRepr.of[TableInfo[EC, E, ID]])((typeRepr, elemName) =>
+        Refinement(typeRepr, elemName, TypeRepr.of[ColumnName])
+      )
+    val tableInfo = TableInfo.tableInfoImpl[EC, E, ID]
     val eElemCodecs = getEElemCodecs[E]
     val eCodec = Expr.summon[DbCodec[E]].get
     val ecCodec = Expr.summon[DbCodec[EC]].get
@@ -48,24 +58,34 @@ object RepoDefaults:
     val eClassTag = Expr.summon[ClassTag[E]].get
     val ecClassTag = Expr.summon[ClassTag[EC]].get
     val idClassTag = Expr.summon[ClassTag[ID]].get
-    '{
-      ${ exprs.tableAnnot }.dbType.buildRepoDefaults[EC, E, ID](
-        ${ exprs.tableNameSql },
-        ${ Expr(exprs.eElemNames) },
-        ${ Expr.ofSeq(exprs.eElemNamesSql) },
-        $eElemCodecs,
-        ${ Expr(exprs.ecElemNames) },
-        ${ Expr.ofSeq(exprs.ecElemNamesSql) },
-        ${ exprs.idIndex }
-      )(using
-        $eCodec,
-        $ecCodec,
-        $idCodec,
-        $eClassTag,
-        $ecClassTag,
-        $idClassTag
-      )
-    }
+    refinement.asType match
+      case '[refinementTpe] =>
+        '{
+          ${ exprs.tableAnnot }.dbType
+            .buildRepoDefaults[EC, E, ID, refinementTpe](
+              ${ exprs.tableNameSql },
+              ${ Expr(exprs.eElemNames) },
+              ${ Expr.ofSeq(exprs.eElemNamesSql) },
+              $eElemCodecs,
+              ${ Expr(exprs.ecElemNames) },
+              ${ Expr.ofSeq(exprs.ecElemNamesSql) },
+              ${ exprs.idIndex },
+              ${ tableInfo.asInstanceOf[Expr[refinementTpe]] }
+            )(using
+              $eCodec,
+              $ecCodec,
+              $idCodec,
+              $eClassTag,
+              $ecClassTag,
+              $idClassTag
+            )
+            .asInstanceOf[RepoDefaults[
+              EC,
+              E,
+              ID
+            ] { type TableInfoType = refinementTpe }]
+        }
+    end match
   end genImpl
 
   private def getEElemCodecs[E: Type](using Quotes): Expr[Seq[DbCodec[?]]] =
@@ -90,5 +110,5 @@ object RepoDefaults:
           case Some(codec) => getProductCodecs[metTail](res :+ codec)
           case None => getProductCodecs[metTail](res :+ '{ DbCodec.AnyCodec })
       case '[EmptyTuple] => Expr.ofSeq(res)
-      
+
 end RepoDefaults

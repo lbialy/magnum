@@ -61,9 +61,19 @@ end TableInfo
 
 object TableInfo:
   transparent inline def apply[EC: Mirror.Of, E: Mirror.Of, ID] =
-    ${ dbSchemaImpl[EC, E, ID] }
+    ${ tableInfoImpl[EC, E, ID] }
 
-  private def dbSchemaImpl[EC: Type, E: Type, ID: Type](using
+  private[magnum] def tableInfoRefinement[EC: Type, E: Type, ID: Type](
+      exprs: TableExprs
+  )(using Quotes): Type[?] =
+    import quotes.reflect.*
+    exprs.eElemNames
+      .foldLeft(TypeRepr.of[TableInfo[EC, E, ID]])((typeRepr, elemName) =>
+        Refinement(typeRepr, elemName, TypeRepr.of[ColumnName])
+      )
+      .asType
+
+  private[magnum] def tableInfoImpl[EC: Type, E: Type, ID: Type](using
       Quotes
   ): Expr[Any] =
     import quotes.reflect.*
@@ -118,5 +128,5 @@ object TableInfo:
           ).asInstanceOf[tpe]
         }
     end match
-  end dbSchemaImpl
+  end tableInfoImpl
 end TableInfo

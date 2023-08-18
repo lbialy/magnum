@@ -8,14 +8,15 @@ import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Using, boundary}
 
 object ClickhouseDbType extends DbType:
-  def buildRepoDefaults[EC, E, ID](
+  def buildRepoDefaults[EC, E, ID, TI](
       tableNameSql: String,
       eElemNames: Seq[String],
       eElemNamesSql: Seq[String],
       eElemCodecs: Seq[DbCodec[?]],
       ecElemNames: Seq[String],
       ecElemNamesSql: Seq[String],
-      idIndex: Int
+      idIndex: Int,
+      ti: TI
   )(using
       eCodec: DbCodec[E],
       ecCodec: DbCodec[EC],
@@ -23,7 +24,7 @@ object ClickhouseDbType extends DbType:
       eClassTag: ClassTag[E],
       ecClassTag: ClassTag[EC],
       idClassTag: ClassTag[ID]
-  ): RepoDefaults[EC, E, ID] =
+  ): RepoDefaults[EC, E, ID] { type TableInfoType = TI } =
     require(
       eClassTag.runtimeClass == ecClassTag.runtimeClass,
       "ClickHouse does not support generated keys, so EC must equal E"
@@ -52,6 +53,10 @@ object ClickhouseDbType extends DbType:
       pos + idCodec.cols.length
 
     new RepoDefaults[EC, E, ID]:
+      type TableInfoType = TI
+
+      def tableInfo: TI = ti
+
       def count(using con: DbCon): Long = countQuery.run().head
 
       def existsById(id: ID)(using DbCon): Boolean =
